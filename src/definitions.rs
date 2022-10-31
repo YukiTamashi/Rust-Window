@@ -280,12 +280,6 @@ pub unsafe extern "system" fn window_procedure(hWnd: HWND, Msg: UINT, wParam: WP
             FillRect(hdc, &ps.rcPaint, (COLOR_WINDOW +5) as HBRUSH);
             EndPaint(hWnd, &ps);
           }
-        WM_SETCURSOR => {
-            let hInstance = GetModuleHandleW(null());
-            let cursor = LoadCursorW(hInstance, IDC_ARROW);
-            SetCursor(cursor);
-            return 1;
-        }
          _ => return DefWindowProcW(hWnd, Msg, wParam, lParam),
         }
         0
@@ -296,7 +290,7 @@ pub fn register_window(name: Vec<u16>,hInstance: *mut c_void) -> WNDCLASSW{
     wc.lpfnWndProc = Some(window_procedure);
     wc.hInstance = hInstance;
     wc.lpszClassName = name.as_ptr();
-    wc.hCursor = unsafe{LoadCursorW(unsafe{hInstance}, IDC_ARROW)};
+    wc.hCursor = unsafe{LoadCursorW(null_mut(), IDC_ARROW)};
     let atom = unsafe {RegisterClassW(&wc)};
     if atom == 0{
         let last_err = unsafe {GetLastError()};
