@@ -1,15 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use triangle::win32::*;
-use std::ptr::{null, null_mut};
+use std::ptr::{null_mut};
 
 fn main() {
     let name = wide_str("window");
-    let hInstance = unsafe{GetModuleHandleW(core::ptr::null())};
-    let mut wc = register_window(name.clone(), hInstance.clone());
-    let hwnd = make_window(name, hInstance);
-    let _win = unsafe {ShowWindow(hwnd, SW_SHOW)};
-    let mut msg = MSG::default();
+    let hinstance = unsafe{GetModuleHandleW(core::ptr::null())};
+    register_window(name.clone(), hinstance);
+    let hwnd = make_window(name, hinstance);
+    unsafe {ShowWindow(hwnd, SW_SHOW)};
+    let mut msg = Msg::default();
     loop{
         let message = unsafe{GetMessageW(&mut msg, null_mut(), 0, 0)};
         if message == 0{
