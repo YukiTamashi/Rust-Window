@@ -1,3 +1,6 @@
+#[cfg(windows)]
+pub mod win32{
+
 use std::ffi::{c_void};
 use std::ptr::{null, null_mut};
 
@@ -325,3 +328,4 @@ pub fn wide_str(str: &str) -> Vec<u16> {
     str.encode_utf16().chain(Some(0)).collect()
 }
 
+}

@@ -1,5 +1,6 @@
-pub mod definitions;
-use definitions::*;
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use triangle::win32::*;
 use std::ptr::{null, null_mut};
 
 fn main() {
