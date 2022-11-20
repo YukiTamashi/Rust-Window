@@ -69,7 +69,7 @@ pub mod win32 {
     type WParam = UIntPtr;
     type Word = u16;
     type WNDProc = Option<
-        unsafe extern "system" fn(hwnd: HWnd, Msg: UInt, wParam: WParam, lParam: LParam) -> LResult,
+        fn(hwnd: HWnd, Msg: UInt, wParam: WParam, lParam: LParam) -> LResult,
     >;
     
     #[derive(Debug)]
@@ -225,6 +225,7 @@ pub mod win32 {
         fn SetWindowLongPtrW(hWnd: HWnd, nIndex: Int, dwNewLong: LongPtr) -> LongPtr;
         fn GetWindowLongPtrW(hWnd: HWnd, nIndex: CInt) -> LongPtr;
         fn SetCursor(hCursor: HCursor) -> HCursor;
+        fn SetWindowTextW(hWnd: HWnd, lpString: LPCWStr) -> Bool;
     }
 
     fn get_handle() -> HModule {
@@ -239,7 +240,7 @@ pub mod win32 {
         name: Vec<u16>,
         h_instance: *mut c_void,
         hCursor: HCursor,
-        procedure: unsafe extern "system" fn(HWnd, UInt, WParam, LParam) -> LResult,
+        procedure: fn(HWnd, UInt, WParam, LParam) -> LResult,
     ) -> WNDClassW {
         let wc = WNDClassW {
             lpfnWndProc: Some(procedure),
@@ -282,11 +283,12 @@ pub mod win32 {
 
     //Handles entire creation of the window.
     //Returns window handle.
-    pub fn create_window(name: &str, hCursor: HCursor, procedure: unsafe extern "system" fn(HWnd, UInt, WParam, LParam) -> LResult) -> HWnd {
+    pub fn create_window(name: &str, hCursor: HCursor, procedure: fn(HWnd, UInt, WParam, LParam) -> LResult) -> HWnd {
         let hinstance = get_handle();
         register_window(wide_str(name), hinstance, hCursor, procedure);
         let hwnd = make_window(wide_str(name), hinstance);
         unsafe { ShowWindow(hwnd, SW_SHOW) };
+        unsafe{ SetWindowTextW(hwnd, wide_str(name).as_ptr()) };
         hwnd
     }
 
@@ -321,5 +323,48 @@ pub mod win32 {
         }
         false
     }
-
+    pub fn procedure() -> fn(HWnd, UInt, WParam, LParam) -> LResult{
+        |x, y, z, a|unsafe{window_procedure(x, y, z, a)} 
+    }
+    unsafe extern "system" fn window_procedure(
+        hWnd: HWnd,
+        Msg: UInt,
+        wParam: WParam,
+        lParam: LParam,
+    ) -> LResult {
+        match Msg {
+            WM_NCCREATE => {
+                let createstruct: *mut CreateStructW = lParam as *mut _;
+                if createstruct.is_null() {
+                    return 0;
+                }
+                let boxed_i32_ptr: *mut i32 = (*createstruct).lpCreateParams().cast();
+                SetWindowLongPtrW(hWnd, GWLP_USERDATA, boxed_i32_ptr as LongPtr);
+                return 1;
+            }
+            WM_CLOSE => {
+                let message = wide_str("Do you really want to exit?");
+                let title = wide_str("Quit");
+                let result = MessageBoxW(hWnd, message.as_ptr(), title.as_ptr(), MB_OKCANCEL);
+                if result == IDOK {
+                    DestroyWindow(hWnd);
+                } else {
+                    return 0;
+                }
+            }
+            WM_DESTROY => {
+                let ptr = GetWindowLongPtrW(hWnd, GWLP_USERDATA) as *mut i32;
+                drop(Box::from_raw(ptr));
+                PostQuitMessage(0);
+            }
+            WM_PAINT => {
+                let mut ps = PaintStruct::default();
+                let hdc = BeginPaint(hWnd, &mut ps);
+                FillRect(hdc, ps.rcPaint(), (COLOR_WINDOW + 5) as HBrush);
+                EndPaint(hWnd, &ps);
+            }
+            _ => return DefWindowProcW(hWnd, Msg, wParam, lParam),
+        }
+        0
+    }
 }
