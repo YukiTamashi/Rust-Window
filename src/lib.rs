@@ -1,8 +1,6 @@
-
-
 #[cfg(windows)]
 pub mod win32 {
-    use windows::Win32::{UI::WindowsAndMessaging::*, System::LibraryLoader::*, Foundation::*, Graphics::Gdi::*};
+    use windows::Win32::{UI::WindowsAndMessaging::*, Foundation::*, Graphics::Gdi::*, System::LibraryLoader::GetModuleHandleW};
 
     #[derive(Debug)]
     pub struct CursorError;
@@ -40,83 +38,74 @@ pub mod win32 {
     }
 
     fn register_window(
-        name: Vec<u16>,
-        h_instance: *mut c_void,
-        hCursor: HCursor,
-        procedure: fn(HWnd, UInt, WParam, LParam) -> LResult,
-    ) -> WNDClassW {
-        let wc = WNDClassW {
-            lpfnWndProc: Some(procedure),
+        name: &str,
+        h_instance: HINSTANCE,
+        hCursor: HCURSOR,
+    ) -> WNDCLASSW {
+        let wc = WNDCLASSW {
+            lpfnWndProc: Some(window_procedure),
             hInstance: h_instance,
-            lpszClassName: name.as_ptr(),
+            lpszClassName: (&windows::core::HSTRING::from(name)).into(),
             hCursor,
             ..Default::default()
         };
         let atom = unsafe { RegisterClassW(&wc) };
         if atom == 0 {
             let last_err = unsafe { GetLastError() };
-            panic!("Could not register the window, error code: {}", last_err);
+            panic!("Could not register the window, error code: {:?}", last_err);
         }
         wc
     }
 
-    fn make_window(name: Vec<u16>, h_instance: *mut c_void) -> HWnd {
-        let lparam: *mut i32 = Box::leak(Box::new(5_i32));
+    fn make_window(name: &str, h_instance: HINSTANCE) -> HWND {
         let hwnd = unsafe {
             CreateWindowExW(
-                0,
-                name.as_ptr(),
-                name.as_ptr(),
+                WINDOW_EX_STYLE(0),
+                windows::core::PCWSTR::from(&windows::core::HSTRING::from(name)),
+                windows::core::PCWSTR::from(&windows::core::HSTRING::from(name)),
                 WS_OVERLAPPEDWINDOW,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                null_mut(),
-                null_mut(),
-                unsafe { h_instance },
-                lparam.cast(),
+                HWND::default(),
+                HMENU::default(),
+                h_instance,
+                None,
             )
         };
-        if hwnd.is_null() {
-            panic!("Failed to create a window");
-        }
         hwnd
+    }
+
+    
+    fn get_handle() ->  HINSTANCE{
+        unsafe { GetModuleHandleW(windows::core::PCWSTR::null()).unwrap_or_default() }
     }
 
     //Handles entire creation of the window.
     //Returns window handle.
-    pub fn create_window(name: &str, hCursor: HCursor, procedure: fn(HWnd, UInt, WParam, LParam) -> LResult) -> HWnd {
+    pub fn create_window(name: &str, hCursor: HCURSOR) -> HWND {
         let hinstance = get_handle();
-        register_window(wide_str(name), hinstance, hCursor, procedure);
-        let hwnd = make_window(wide_str(name), hinstance);
+        register_window(name, hinstance, hCursor);
+        let hwnd = make_window(name, hinstance);
         unsafe { ShowWindow(hwnd, SW_SHOW) };
-        unsafe{ SetWindowTextW(hwnd, wide_str(name).as_ptr()) };
+        unsafe{ SetWindowTextW::<HWND, windows::core::PCWSTR>(hwnd, (&windows::core::HSTRING::from(name)).into()) };
         hwnd
     }
 
     //Returns cursor handle based on type called.
-    pub fn cursor(name: IDCursor) -> Result<HCursor, CursorError> {
-        let cursor = unsafe { LoadCursorW(null_mut(), unsafe { MakeIntResourceW(name as Word) }) };
-        if cursor.is_null() {
-            Err(CursorError)
-        } else {
-            Ok(cursor)
-        }
-    }
-
-    //Converts into UTF-8 string.
-    fn wide_str(str: &str) -> Vec<u16> {
-        str.encode_utf16().chain(Some(0)).collect()
+    pub fn cursor(name: IDCursor) -> Result<HCURSOR, windows::core::Error> {
+        let cursor = unsafe { LoadCursorW(HINSTANCE::default(), windows::core::PCWSTR::from_raw((name as u16) as *const u16))};
+        cursor
     }
 
     /// Resolve runtime updates to window. Should be enclosed in a loop
     /// Returns true if close command was called.
-    pub fn update(msg: &mut Msg) -> bool {
-        let message = unsafe { GetMessageW(msg, null_mut(), 0, 0) };
-        if message == 0 {
+    pub fn update(msg: &mut MSG) -> bool {
+        let message = unsafe { GetMessageW(msg, HWND::default(), 0, 0) };
+        if message.0 == 0 {
             return true;
-        } else if message == -1 {
+        } else if message.0 == -1 {
             panic!();
         } else {
             unsafe {
@@ -126,33 +115,25 @@ pub mod win32 {
         }
         false
     }
-    pub fn procedure() -> fn(HWnd, UInt, WParam, LParam) -> LResult{
-        |x, y, z, a|unsafe{window_procedure(x, y, z, a)} 
-    }
     unsafe extern "system" fn window_procedure(
-        hWnd: HWnd,
-        Msg: UInt,
-        wParam: WParam,
-        lParam: LParam,
-    ) -> LResult {
+        hWnd: HWND,
+        Msg: u32,
+        wParam: WPARAM,
+        lParam: LPARAM,
+    ) -> LRESULT {
         match Msg {
             WM_NCCREATE => {
-                let createstruct: *mut CreateStructW = lParam as *mut _;
-                if createstruct.is_null() {
-                    return 0;
-                }
-                let boxed_i32_ptr: *mut i32 = (*createstruct).lpCreateParams().cast();
-                SetWindowLongPtrW(hWnd, GWLP_USERDATA, boxed_i32_ptr as LongPtr);
-                return 1;
+                SetWindowLongPtrW(hWnd, GWLP_USERDATA, LPARAM as isize);
+                return LRESULT(1);
             }
             WM_CLOSE => {
                 let message = "Do you really want to exit?";
                 let title = "Quit";
-                let result = MessageBoxW(hWnd, message.into(), title.into(), MB_OKCANCEL);
+                let result = MessageBoxW(hWnd, &windows::core::HSTRING::from(message), &windows::core::HSTRING::from(title), MB_OKCANCEL);
                 if result == IDOK {
                     DestroyWindow(hWnd);
                 } else {
-                    return 0;
+                    return LRESULT(0);
                 }
             }
             WM_DESTROY => {
@@ -163,11 +144,11 @@ pub mod win32 {
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 let hdc = BeginPaint(hWnd, &mut ps);
-                FillRect(hdc, &ps.rcPaint, (COLOR_WINDOW.into() + 5) as HBRUSH);
+                FillRect(hdc, &ps.rcPaint, HBRUSH((COLOR_WINDOW.0 + 5) as isize));
                 EndPaint(hWnd, &ps);
             }
             _ => return DefWindowProcW(hWnd, Msg, wParam, lParam),
         }
-        0
+        LRESULT(0)
     }
 }
