@@ -1,7 +1,7 @@
 pub mod opengl;
 #[cfg(windows)]
 pub mod win32 {
-    use windows::Win32::{UI::WindowsAndMessaging::*, Foundation::*, Graphics::Gdi::*, System::LibraryLoader::GetModuleHandleW};
+    use windows::Win32::{UI::WindowsAndMessaging::*, Foundation::*, Graphics::{Gdi::*, OpenGL::{ChoosePixelFormat, SetPixelFormat}}, System::LibraryLoader::GetModuleHandleW};
     use crate::opengl::*;
 
     #[derive(Debug)]
@@ -71,13 +71,13 @@ pub mod win32 {
         unsafe { GetLastError() }
     }
 
-    fn make_window(name: &str, h_instance: HINSTANCE) -> HWND {
+    pub fn make_window(name: &str, h_instance: HINSTANCE) -> HWND {
         unsafe {
             CreateWindowExW(
-                WINDOW_EX_STYLE(0),
+                WS_EX_APPWINDOW | WS_EX_OVERLAPPEDWINDOW,
                 windows::core::PCWSTR::from(&windows::core::HSTRING::from(name)),
                 windows::core::PCWSTR::from(&windows::core::HSTRING::from(name)),
-                WS_OVERLAPPEDWINDOW,
+                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -90,8 +90,9 @@ pub mod win32 {
         }
     }
 
+
     
-    fn get_handle() ->  HINSTANCE{
+    pub(crate) fn get_handle() ->  HINSTANCE{
         unsafe { GetModuleHandleW(windows::core::PCWSTR::null()).unwrap_or_default() }
     }
 
