@@ -6,11 +6,10 @@ use windows::Win32::UI::WindowsAndMessaging::MSG;
 fn main() {
     let name = "window";
     let cursor = cursor(IDCursor::Arrow).unwrap();
-    let hwnd = create_window(name, cursor);
+    create_window(name, cursor);
     let mut msg = MSG::default();
     loop {
-        let is_done = update(&mut msg);
-        if is_done {
+        if update(&mut msg) {
             break;
         }
     }

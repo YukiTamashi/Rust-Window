@@ -1,6 +1,8 @@
+pub mod opengl;
 #[cfg(windows)]
 pub mod win32 {
     use windows::Win32::{UI::WindowsAndMessaging::*, Foundation::*, Graphics::Gdi::*, System::LibraryLoader::GetModuleHandleW};
+    use crate::opengl::*;
 
     #[derive(Debug)]
     pub struct CursorError;
@@ -46,19 +48,31 @@ pub mod win32 {
             lpfnWndProc: Some(window_procedure),
             hInstance: h_instance,
             lpszClassName: (&windows::core::HSTRING::from(name)).into(),
+            style: CS_OWNDC,
             hCursor,
             ..Default::default()
         };
-        let atom = unsafe { RegisterClassW(&wc) };
-        if atom == 0 {
-            let last_err = unsafe { GetLastError() };
-            panic!("Could not register the window, error code: {:?}", last_err);
-        }
+        register_class(&wc).unwrap_or_else(|()|
+            panic!("Couldn't register window, error code: {:?}", last_error()));
         wc
     }
 
+    fn register_class(wc: &WNDCLASSW) -> Result<u16, ()>{
+        let atom = unsafe { RegisterClassW(wc) };
+        if atom == 0{
+            Err(())
+        }
+        else{
+            Ok(atom)
+        }
+    }
+
+    pub fn last_error() -> WIN32_ERROR{
+        unsafe { GetLastError() }
+    }
+
     fn make_window(name: &str, h_instance: HINSTANCE) -> HWND {
-        let hwnd = unsafe {
+        unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 windows::core::PCWSTR::from(&windows::core::HSTRING::from(name)),
@@ -73,8 +87,7 @@ pub mod win32 {
                 h_instance,
                 None,
             )
-        };
-        hwnd
+        }
     }
 
     
@@ -95,12 +108,11 @@ pub mod win32 {
 
     //Returns cursor handle based on type called.
     pub fn cursor(name: IDCursor) -> Result<HCURSOR, windows::core::Error> {
-        let cursor = unsafe { LoadCursorW(HINSTANCE::default(), windows::core::PCWSTR::from_raw((name as u16) as *const u16))};
-        cursor
+        unsafe { LoadCursorW(HINSTANCE::default(), windows::core::PCWSTR::from_raw((name as u16) as *const u16))}
     }
 
     /// Resolve runtime updates to window. Should be enclosed in a loop
-    /// Returns true if close command was called.
+    /// Returns true if close command was called so loop can be broken.
     pub fn update(msg: &mut MSG) -> bool {
         let message = unsafe { GetMessageW(msg, HWND::default(), 0, 0) };
         if message.0 == 0 {
